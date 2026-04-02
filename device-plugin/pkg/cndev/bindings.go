@@ -475,28 +475,22 @@ func GetDeviceComputeMode(idx uint, delayTime int) (bool, error) {
 }
 
 func getDeviceInfo(idx uint) (string, string, string, string, error) {
-	if ret := dl.checkExist("cndevGetCardName", "cndevGetCardSN", "cndevGetUUID"); ret != C.CNDEV_SUCCESS {
+	if ret := dl.checkExist("cndevGetCardNameStringByDevId", "cndevGetCardSN", "cndevGetUUID"); ret != C.CNDEV_SUCCESS {
 		return "", "", "", "", errorString(ret)
 	}
 
-	var cardName C.cndevCardName_t
 	var cardSN C.cndevCardSN_t
 	var uuidInfo C.cndevUUID_t
 
-	cardName.version = C.CNDEV_VERSION_6
-	r := C.cndevGetCardName(&cardName, cndevHandleMap[idx])
-	err := errorString(r)
-	if err != nil {
-		return "", "", "", "", err
-	}
+	cardNameStr := C.GoString(C.cndevGetCardNameStringByDevId(cndevHandleMap[idx]))
 
-	if cardName.id == C.MLU100 {
+	if cardNameStr == "MLU100" {
 		log.Panicln("MLU100 detected, there is no way to be here.")
 	}
 
 	cardSN.version = C.CNDEV_VERSION_6
-	r = C.cndevGetCardSN(&cardSN, cndevHandleMap[idx])
-	err = errorString(r)
+	r := C.cndevGetCardSN(&cardSN, cndevHandleMap[idx])
+	err := errorString(r)
 	if err != nil {
 		return "", "", "", "", err
 	}

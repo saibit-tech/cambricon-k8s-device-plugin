@@ -103,35 +103,6 @@ cndevRet_t cndevGetCardSN(cndevCardSN_t *cardSN, cndevDevice_t device) {
 
 cndevRet_t cndevRelease() { return CNDEV_SUCCESS; }
 
-cndevRet_t cndevGetCardName(cndevCardName_t *cardName, cndevDevice_t device) {
-	cJSON *config;
-	config = readJsonFile();
-
-	cJSON *card_type_node = cJSON_GetObjectItem(config, "type");
-	int card_type = cJSON_GetArrayItem(card_type_node, device)->valueint;
-
-	if (card_type == 0) {
-		cardName->id = MLU100;
-	} else if (card_type == 1) {
-		cardName->id = MLU270;
-	} else if (card_type == 16) {
-		cardName->id = MLU220_M2;
-	} else if (card_type == 17) {
-		cardName->id = MLU220_EDGE;
-	} else if (card_type == 18) {
-		cardName->id = MLU220_EVB;
-	} else if (card_type == 19) {
-		cardName->id = MLU220_M2i;
-	} else if (card_type == 20) {
-		cardName->id = MLU290;
-	} else if (card_type == 23) {
-		cardName->id = MLU370;
-	}
-
-	cJSON_Delete(config);
-	return CNDEV_SUCCESS;
-}
-
 const char *cndevGetCardNameStringByDevId(cndevDevice_t device) {
 	cJSON *config;
 	config = readJsonFile();

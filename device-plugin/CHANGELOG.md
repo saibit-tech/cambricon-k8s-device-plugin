@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.0.24
+
+- Replace cndevGetCardName with cndevGetCardNameStringByDevId
+
 ## v2.0.23
 
 - Add resource limits and requests

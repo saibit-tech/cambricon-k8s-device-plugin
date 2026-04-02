@@ -89,16 +89,6 @@ void Test_cndevGetUUID(int id) {
 	       result);
 }
 
-void Test_cndevGetCardName(int id) {
-	cndevCardName_t *cardName;
-	cardName = (cndevCardName_t *)malloc(sizeof(cndevCardName_t));
-	cardName->version = 5;
-	cndevRet_t result;
-	result = cndevGetCardName(cardName, id);
-	printf("=== Test cndevGetCardName ===\nid:%d\nret:%d\n", cardName->id,
-	       result);
-}
-
 void Test_cndevGetMemoryUsageV2(int id) {
 	cndevMemoryInfoV2_t *memInfo;
 	memInfo = (cndevMemoryInfoV2_t *)malloc(sizeof(cndevMemoryInfoV2_t));
@@ -224,7 +214,6 @@ int main() {
 		cndevDevice_t device;
 		cndevRet_t result;
 		result = cndevGetDeviceHandleByIndex(i, &device);
-		Test_cndevGetCardName(device);
 		Test_cndevGetComputeMode(device);
 		Test_cndevGetCardHealthState(device);
 		Test_cndevGetCardSN(device);
