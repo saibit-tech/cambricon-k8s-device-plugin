@@ -14,11 +14,10 @@ This repository contains Cambricon's official implementation of the Kubernetes d
 
 The prerequisites for running the Cambricon Device Plugin:
 
-- Support MLU3xx devices
-- For MLU 3xx needs driver >= 4.20.9
-- For MLU 5xx needs driver >= 5.0.0
-- For MLU 3xx needs cndev >= 2.8.2 on your building machine
-- For MLU 5xx needs cndev >= 3.0.1 on your building machine
+- For mtp_372 needs driver >= 4.20.9
+- For mtp_592 needs driver >= 5.0.0
+- For mtp_372 needs cndev >= 2.8.2 on your building machine
+- For mtp_592 needs cndev >= 3.0.1 on your building machine
 - For SMLU needs driver >= 5.10.27 and cndev >= 3.9.0
 
 For MLU driver version before 4.9.13, and need to support MLU2xx please use [release v1.1.3].
