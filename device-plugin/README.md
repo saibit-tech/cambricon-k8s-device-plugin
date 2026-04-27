@@ -20,7 +20,7 @@ The prerequisites for running the Cambricon Device Plugin:
 - For mtp_592 needs cndev >= 3.0.1 on your building machine
 - For SMLU needs driver >= 5.10.27 and cndev >= 3.9.0
 
-For MLU driver version before 4.9.13, and need to support MLU2xx please use [release v1.1.3].
+For MLU driver version before 4.9.13, and need to support mtp_270/mtp_290 please use [release v1.1.3].
 
 For Kubernetes version < 1.19.0, mlulink topology-aware mode can not be used. If you want to use this feature, make sure your Kubernetes version >= 1.19.0.
 
