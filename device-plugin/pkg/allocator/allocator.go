@@ -27,18 +27,18 @@ const (
 	guaranteed string = "guaranteed"
 )
 
-var getRingTimeout time.Duration = 60 * time.Second
+var getRingTimeout = 60 * time.Second
 
 type Allocator interface {
 	Allocate(available []uint, required []uint, size int) ([]uint, error)
 }
 
 func New(policy string, devs map[string]*cndev.Device) Allocator {
-	model := cndev.GetDeviceModel(uint(0))
-	if strings.Contains(model, "MLU290") || model == "MLU370-M8" {
+	model := Reverse(cndev.GetDeviceModel(uint(0)))
+	if strings.Contains(model, "092U") || strings.Contains(model, "8M-073U") {
 		return NewSpiderAllocator(policy, devs)
 	}
-	if model == "MLU370-X8" || model == "MLU590-H8" {
+	if strings.Contains(model, "8X-073U") || strings.Contains(model, "8H-095U") {
 		return NewBoardAllocator(policy, devs)
 	}
 	return NewDefaultAllocator(policy, devs)
@@ -60,4 +60,12 @@ func containsAll(set []uint, devs []uint) bool {
 		}
 	}
 	return true
+}
+
+func Reverse(s string) string {
+	b := []byte(s)
+	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+		b[i], b[j] = b[j], b[i]
+	}
+	return string(b)
 }

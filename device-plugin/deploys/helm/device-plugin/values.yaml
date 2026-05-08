@@ -53,10 +53,11 @@ args:
 - --mode=default # device plugin mode: default, env-share, mim, topology-aware
 - --virtualization-num=1 # virtualization number for each MLU, used only in env-share mode, set to 110 to support multi cards per container in env-share mode
 - --mlulink-policy=best-effort # MLULink topology policy: best-effort, guaranteed or restricted, used only in topology-aware mode
-- --cnmon-path=/usr/bin/cnmon # host machine cnmon path, must be absolute path. comment out this line to avoid mounting cnmon
+- --cnmon-path=/usr/bin/cnmon # host machine cnmon path, must be absolute path. comment out this line if use-runtime is enabled
 - --log-level=info # log level: trace/debug/info/warn/error/fatal/panic" default:"info"
 - --enable-device-type # enable device registration with type info
-# - --min-dsmlu-unit=0 # minimum unit for dsmu, used only in dynamic-smlu mode" default:"0" env:"MIN-DSMLU-UNIT"
+# - --node-label # uncomment to enable periodic checking and updating of node labels for MLU Devices, such as driver, mcu, model and cpu type
+# - --one-shot-for-node-label # uncomment to control node label only run once not periodically, only works when node label is enable
 # - --enable-console # uncomment to enable UART console device(/dev/ttyMS) in container
 # - --disable-health-check # uncomment to disable health check
 # - --mount-rpmsg # uncomment to mount RPMsg directory, will be deprecated in the near future
@@ -66,9 +67,12 @@ volumeMounts:
   mountPath: /var/lib/kubelet/device-plugins
 - name: pod-resources
   mountPath: /var/lib/kubelet/pod-resources
-  # mount dev if dynamic-smlu mode is enabled
-  # - name: dev
-  #   mountPath: /dev
+- name: dev
+  mountPath: /dev
+- name: cndev-lib
+  mountPath: /host/usr/lib
+- name: host-proc
+  mountPath: /host/proc
   # mount /etc/cambricon if dynamic-smlu mode is enabled
   # - name: restore-cfg
   #   mountPath: /etc/cambricon
@@ -80,3 +84,17 @@ volumes:
 - name: pod-resources
   hostPath:
     path: /var/lib/kubelet/pod-resources
+- name: dev
+  hostPath:
+    path: /dev
+- name: cndev-lib
+  hostPath:
+    path: /usr/lib
+- name: host-proc
+  hostPath:
+    path: /proc
+
+# mount /etc/cambricon if dynamic-smlu mode is enabled
+# - name: restore-cfg
+#   hostPath:
+#     path: /etc/cambricon

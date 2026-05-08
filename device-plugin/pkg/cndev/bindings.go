@@ -14,12 +14,17 @@
 
 package cndev
 
-// #cgo LDFLAGS: -ldl -Wl,--unresolved-symbols=ignore-in-object-files
+// #cgo LDFLAGS: -ldl -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files
 // #include "include/cndev.h"
 import "C"
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -71,11 +76,10 @@ type SmluInfo struct {
 }
 
 func Init(healthCheck bool) error {
-	r := dl.cndevInit()
-	if err := errorString(r); err != nil || healthCheck {
-		return err
+	if healthCheck {
+		return (errorString(C.cndevInit(C.int(0))))
 	}
-	return generateDeviceHandleMap()
+	return errorString(dl.cndevInit())
 }
 
 func Release() error {
@@ -83,9 +87,13 @@ func Release() error {
 }
 
 func CreateSmluProfile(pl *DsmluProfile, memUnit int) (uint, error) {
+	if ret := dl.checkExist("cndevCreateSMluProfileInfo"); ret != C.CNDEV_SUCCESS {
+		return 0, errorString(ret)
+	}
+
 	var profileID C.int
 	var profile C.cndevSMluSet_t
-	profile.version = C.CNDEV_VERSION_5
+	profile.version = C.CNDEV_VERSION_6
 	profile.mluQuota = C.uint(pl.Vcore)
 	profile.memorySize = C.ulong(pl.Vmemory * memUnit * 1024 * 1024)
 	r := C.cndevCreateSMluProfileInfo(&profile, &profileID, cndevHandleMap[uint(pl.Slot)])
@@ -93,6 +101,10 @@ func CreateSmluProfile(pl *DsmluProfile, memUnit int) (uint, error) {
 }
 
 func CreateSmluProfileInstance(profileID, index uint) (int, error) {
+	if ret := dl.checkExist("cndevCreateSMluInstanceByProfileId"); ret != C.CNDEV_SUCCESS {
+		return 0, errorString(ret)
+	}
+
 	var instance C.cndevMluInstance_t
 	name := C.CString("")
 	defer C.free(unsafe.Pointer(name))
@@ -101,28 +113,48 @@ func CreateSmluProfileInstance(profileID, index uint) (int, error) {
 }
 
 func DestroySmlu(instanceHandle int) error {
+	if ret := dl.checkExist("cndevDestroySMluInstanceByHandle"); ret != C.CNDEV_SUCCESS {
+		return errorString(ret)
+	}
+
 	return errorString(C.cndevDestroySMluInstanceByHandle(C.int(instanceHandle)))
 }
 
 func DestroySmluProfile(profileID, index uint) error {
+	if ret := dl.checkExist("cndevDestroySMluProfileInfo"); ret != C.CNDEV_SUCCESS {
+		return errorString(ret)
+	}
+
 	return errorString(C.cndevDestroySMluProfileInfo(C.int(profileID), cndevHandleMap[index]))
 }
 
 func DeviceMimModeEnabled(idx uint) (bool, error) {
+	if ret := dl.checkExist("cndevGetMimMode"); ret != C.CNDEV_SUCCESS {
+		return false, errorString(ret)
+	}
+
 	var mode C.cndevMimMode_t
-	mode.version = C.CNDEV_VERSION_5
+	mode.version = C.CNDEV_VERSION_6
 	r := C.cndevGetMimMode(&mode, cndevHandleMap[idx])
 	return mode.mimMode == C.CNDEV_FEATURE_ENABLED, errorString(r)
 }
 
 func DeviceSmluModeEnabled(idx uint) (bool, error) {
+	if ret := dl.checkExist("cndevGetSMLUMode"); ret != C.CNDEV_SUCCESS {
+		return false, errorString(ret)
+	}
+
 	var mode C.cndevSMLUMode_t
-	mode.version = C.CNDEV_VERSION_5
+	mode.version = C.CNDEV_VERSION_6
 	r := C.cndevGetSMLUMode(&mode, cndevHandleMap[idx])
 	return mode.smluMode == C.CNDEV_FEATURE_ENABLED, errorString(r)
 }
 
 func GetAllMluInstanceInfo(idx uint) ([]MimInfo, error) {
+	if ret := dl.checkExist("cndevGetAllMluInstanceInfo"); ret != C.CNDEV_SUCCESS {
+		return nil, errorString(ret)
+	}
+
 	miCount := C.int(1 << 4)
 	var miInfos []MimInfo
 	var miInfo C.cndevMluInstanceInfo_t
@@ -172,6 +204,10 @@ func GetAllMluInstanceInfo(idx uint) ([]MimInfo, error) {
 }
 
 func GetAllSmluInfo(idx uint) ([]SmluInfo, error) {
+	if ret := dl.checkExist("cndevGetAllSMluInstanceInfo"); ret != C.CNDEV_SUCCESS {
+		return nil, errorString(ret)
+	}
+
 	smluCount := C.int(1 << 7)
 	var smluInfos []SmluInfo
 	var smluInfo C.cndevSMluInfo_t
@@ -222,42 +258,49 @@ func GetAllSmluInfo(idx uint) ([]SmluInfo, error) {
 }
 
 func GetDeviceCount() (uint, error) {
+	if ret := dl.checkExist("cndevGetDeviceCount"); ret != C.CNDEV_SUCCESS {
+		return 0, errorString(ret)
+	}
+
 	var cardInfos C.cndevCardInfo_t
-	cardInfos.version = C.CNDEV_VERSION_5
+	cardInfos.version = C.CNDEV_VERSION_6
 	r := C.cndevGetDeviceCount(&cardInfos)
 	return uint(cardInfos.number), errorString(r)
 }
 
-func GetDeviceHealthState(d *Device, delayTime int) (int, error) {
-	ret, err := getDeviceHealthState(d.Slot, delayTime)
-	if err != nil || ret == 0 {
-		return 0, err
-	}
-	return 1, nil
-}
-
 func GetDeviceMemory(idx uint) (uint, error) {
-	var cardMemInfo C.cndevMemoryInfo_t
-	cardMemInfo.version = C.CNDEV_VERSION_5
-	r := C.cndevGetMemoryUsage(&cardMemInfo, cndevHandleMap[idx])
+	if ret := dl.checkExist("cndevGetMemoryUsageV2"); ret != C.CNDEV_SUCCESS {
+		return 0, errorString(ret)
+	}
+
+	var cardMemInfo C.cndevMemoryInfoV2_t
+	r := C.cndevGetMemoryUsageV2(&cardMemInfo, cndevHandleMap[idx])
 	return uint(cardMemInfo.physicalMemoryTotal), errorString(r)
 }
 
 func GetDeviceModel(idx uint) string {
+	if ret := dl.checkExist("cndevGetCardNameStringByDevId"); ret != C.CNDEV_SUCCESS {
+		return ""
+	}
+
 	return C.GoString(C.cndevGetCardNameStringByDevId(cndevHandleMap[idx]))
 }
 
 func GetDeviceProfileInfo(index uint) ([]DsmluProfileInfo, error) {
+	if ret := dl.checkExist("cndevGetSMluProfileIdInfo"); ret != C.CNDEV_SUCCESS {
+		return nil, errorString(ret)
+	}
+
 	var dsmluProfileInfos []DsmluProfileInfo
 	var deviceProfiles C.cndevSMluProfileIdInfo_t
-	deviceProfiles.version = C.CNDEV_VERSION_5
+	deviceProfiles.version = C.CNDEV_VERSION_6
 	r := C.cndevGetSMluProfileIdInfo(&deviceProfiles, cndevHandleMap[index])
 	if errorString(r) != nil {
 		return dsmluProfileInfos, errorString(r)
 	}
 	for i := 0; i < int(deviceProfiles.count); i++ {
 		var profileInfo C.cndevSMluProfileInfo_t
-		profileInfo.version = C.CNDEV_VERSION_5
+		profileInfo.version = C.CNDEV_VERSION_6
 		r := C.cndevGetSMluProfileInfo(&profileInfo, deviceProfiles.profileId[i], cndevHandleMap[index])
 		if errorString(r) != nil {
 			return dsmluProfileInfos, errorString(r)
@@ -277,13 +320,28 @@ func GetDeviceProfileInfo(index uint) ([]DsmluProfileInfo, error) {
 }
 
 func GetDeviceUUID(idx uint) (string, error) {
+	if ret := dl.checkExist("cndevGetUUID"); ret != C.CNDEV_SUCCESS {
+		return "", errorString(ret)
+	}
+
 	var uuidInfo C.cndevUUID_t
-	uuidInfo.version = C.CNDEV_VERSION_5
+	uuidInfo.version = C.CNDEV_VERSION_6
 	r := C.cndevGetUUID(&uuidInfo, cndevHandleMap[idx])
 	if err := errorString(r); err != nil {
 		return "", err
 	}
 	return C.GoString((*C.char)(unsafe.Pointer(&uuidInfo.uuid))), nil
+}
+
+func GetDeviceVersion(idx uint) (uint, uint, uint, uint, uint, uint, error) {
+	if ret := dl.checkExist("cndevGetVersionInfo"); ret != C.CNDEV_SUCCESS {
+		return 0, 0, 0, 0, 0, 0, errorString(ret)
+	}
+
+	var versionInfo C.cndevVersionInfo_t
+	versionInfo.version = C.CNDEV_VERSION_6
+	r := C.cndevGetVersionInfo(&versionInfo, cndevHandleMap[idx])
+	return uint(versionInfo.mcuMajorVersion), uint(versionInfo.mcuMinorVersion), uint(versionInfo.mcuBuildVersion), uint(versionInfo.driverMajorVersion), uint(versionInfo.driverMinorVersion), uint(versionInfo.driverBuildVersion), errorString(r)
 }
 
 func GetExistProfile(pl *DsmluProfile, memUnit int) (*DsmluProfileInfo, bool) {
@@ -318,50 +376,48 @@ func GetMLULinkGroups() ([][]uint, error) {
 		}
 		slots[uuid] = i
 	}
-	group := map[uint]bool{}
-	queue := []uint{0}
-	visited := map[uint]bool{}
-	for len(queue) != 0 {
-		slot := queue[0]
-		queue = queue[1:]
+	visited := make([]bool, num)
+	var groups [][]uint
+	var dfs func(slot uint, currentGroup *[]uint) bool
+	dfs = func(slot uint, currentGroup *[]uint) bool {
 		visited[slot] = true
+		*currentGroup = append(*currentGroup, slot)
 		devs, err := getDeviceMLULinkDevs(slot)
 		if err != nil {
-			return nil, err
+			log.Debugf("failed to get device %d mlulink devs %v", slot, err)
+			return false
 		}
 		for dev := range devs {
-			if _, ok := slots[dev]; !ok {
-				continue
-			}
-			if !visited[slots[dev]] {
-				queue = append(queue, slots[dev])
+			if nextSlot, ok := slots[dev]; ok && !visited[nextSlot] {
+				if !dfs(nextSlot, currentGroup) {
+					return false
+				}
 			}
 		}
-		group[slot] = true
-	}
-	// We assume there are at most 2 groups.
-	group1 := []uint{}
-	group2 := []uint{}
-	for idx := range group {
-		group1 = append(group1, idx)
+		return true
 	}
 	for slot := uint(0); slot < num; slot++ {
-		if !group[slot] {
-			group2 = append(group2, slot)
+		if !visited[slot] {
+			currentGroup := []uint{}
+			if !dfs(slot, &currentGroup) {
+				return nil, fmt.Errorf("failed to get mlulink groups for slot %d", slot)
+			}
+			if len(currentGroup) > 0 {
+				groups = append(groups, currentGroup)
+			}
 		}
 	}
-	if len(group2) != 0 {
-		log.Debugf("getmlulinkgroups groups %+v", [][]uint{group1, group2})
-		return [][]uint{group1, group2}, nil
-	}
-
-	log.Debugf("getmlulinkgroups groups %+v", [][]uint{group1})
-	return [][]uint{group1}, nil
+	log.Debugf("getmlulinkgroups groups %+v", groups)
+	return groups, nil
 }
 
 func GetSmluInfo(instanceHandle int) (SmluInfo, error) {
+	if ret := dl.checkExist("cndevGetSMluInstanceInfo"); ret != C.CNDEV_SUCCESS {
+		return SmluInfo{}, errorString(ret)
+	}
+
 	var smluInfo C.cndevSMluInfo_t
-	smluInfo.version = C.CNDEV_VERSION_5
+	smluInfo.version = C.CNDEV_VERSION_6
 	r := C.cndevGetSMluInstanceInfo(&smluInfo, C.int(instanceHandle))
 	return SmluInfo{
 		DevNodeName: C.GoString((*C.char)(unsafe.Pointer(&smluInfo.devNodeName))),
@@ -393,6 +449,10 @@ func NewDeviceLite(idx uint) (*Device, error) {
 }
 
 func errorString(ret C.cndevRet_t) error {
+	if r := dl.checkExist("cndevGetErrorString"); r != C.CNDEV_SUCCESS {
+		return errorString(r)
+	}
+
 	if ret == C.CNDEV_SUCCESS {
 		return nil
 	}
@@ -400,30 +460,42 @@ func errorString(ret C.cndevRet_t) error {
 	return fmt.Errorf("cndev: %v", err)
 }
 
+func GetDeviceComputeMode(idx uint, delayTime int) (bool, error) {
+	if ret := dl.checkExist("cndevGetComputeMode"); ret != C.CNDEV_SUCCESS {
+		return false, errorString(ret)
+	}
+
+	var ret C.cndevRet_t
+	var cardComputeMode C.cndevComputeMode_t
+	cardComputeMode.version = C.CNDEV_VERSION_6
+	// sleep for some seconds
+	time.Sleep(time.Duration(delayTime) * time.Second)
+	ret = C.cndevGetComputeMode(&cardComputeMode, cndevHandleMap[idx])
+	return cardComputeMode.mode == C.CNDEV_COMPUTEMODE_PROHIBITED, errorString(ret)
+}
+
 func getDeviceInfo(idx uint) (string, string, string, string, error) {
-	var cardName C.cndevCardName_t
+	if ret := dl.checkExist("cndevGetCardNameStringByDevId", "cndevGetCardSN", "cndevGetUUID"); ret != C.CNDEV_SUCCESS {
+		return "", "", "", "", errorString(ret)
+	}
+
 	var cardSN C.cndevCardSN_t
 	var uuidInfo C.cndevUUID_t
 
-	cardName.version = C.CNDEV_VERSION_5
-	r := C.cndevGetCardName(&cardName, cndevHandleMap[idx])
+	cardNameStr := C.GoString(C.cndevGetCardNameStringByDevId(cndevHandleMap[idx]))
+
+	if cardNameStr == "MLU100" {
+		log.Panicln("MLU100 detected, there is no way to be here.")
+	}
+
+	cardSN.version = C.CNDEV_VERSION_6
+	r := C.cndevGetCardSN(&cardSN, cndevHandleMap[idx])
 	err := errorString(r)
 	if err != nil {
 		return "", "", "", "", err
 	}
 
-	if cardName.id == C.MLU100 {
-		log.Panicln("MLU100 detected, there is no way to be here.")
-	}
-
-	cardSN.version = C.CNDEV_VERSION_5
-	r = C.cndevGetCardSN(&cardSN, cndevHandleMap[idx])
-	err = errorString(r)
-	if err != nil {
-		return "", "", "", "", err
-	}
-
-	uuidInfo.version = C.CNDEV_VERSION_5
+	uuidInfo.version = C.CNDEV_VERSION_6
 	r = C.cndevGetUUID(&uuidInfo, cndevHandleMap[idx])
 	err = errorString(r)
 	if err != nil {
@@ -435,35 +507,42 @@ func getDeviceInfo(idx uint) (string, string, string, string, error) {
 	return fmt.Sprintf("MLU-%s", uuid), fmt.Sprintf("%x", uint64(cardSN.sn)), fmt.Sprintf("%x", uint64(cardSN.motherBoardSn)), fmt.Sprintf("/dev/cambricon_dev%d", idx), nil
 }
 
-func getDeviceHealthState(idx uint, delayTime int) (int, error) {
+func GetDeviceHealthState(idx uint, delayTime int) (int, bool, bool, error) {
+	if ret := dl.checkExist("cndevGetCardHealthState"); ret != C.CNDEV_SUCCESS {
+		return 0, false, false, errorString(ret)
+	}
+
 	var ret C.cndevRet_t
 	var cardHealthState C.cndevCardHealthState_t
 	var healthCode int
-	cardHealthState.version = C.CNDEV_VERSION_5
+	cardHealthState.version = C.CNDEV_VERSION_6
 	// sleep for some seconds
 	time.Sleep(time.Duration(delayTime) * time.Second)
 	ret = C.cndevGetCardHealthState(&cardHealthState, cndevHandleMap[idx])
 	healthCode = int(cardHealthState.health)
-	return healthCode, errorString(ret)
+	return healthCode, cardHealthState.deviceState == C.CNDEV_HEALTH_STATE_DEVICE_GOOD, cardHealthState.driverState == C.CNDEV_HEALTH_STATE_DRIVER_RUNNING, errorString(ret)
 }
 
 func getDeviceMLULinkDevs(idx uint) (map[string]int, error) {
+	if ret := dl.checkExist("cndevGetMLULinkPortNumber", "cndevGetMLULinkStatusV2", "cndevGetMLULinkRemoteInfo"); ret != C.CNDEV_SUCCESS {
+		return nil, errorString(ret)
+	}
+
 	devs := make(map[string]int)
 	portNum := C.cndevGetMLULinkPortNumber(cndevHandleMap[idx])
 	for i := 0; i < int(portNum); i++ {
-		var status C.cndevMLULinkStatus_t
-		status.version = C.CNDEV_VERSION_5
-		r := C.cndevGetMLULinkStatus(&status, cndevHandleMap[idx], C.int(i))
+		var status C.cndevMLULinkStatusV2_t
+		r := C.cndevGetMLULinkStatusV2(&status, cndevHandleMap[idx], C.int(i))
 		err := errorString(r)
 		if err != nil {
 			return nil, err
 		}
-		if status.isActive == C.CNDEV_FEATURE_DISABLED {
+		if status.macState == C.CNDEV_MLULINK_MAC_STATE_DOWN {
 			log.Printf("MLU %v port %v disabled", idx, i)
 			continue
 		}
 		var remoteinfo C.cndevMLULinkRemoteInfo_t
-		remoteinfo.version = C.CNDEV_VERSION_5
+		remoteinfo.version = C.CNDEV_VERSION_6
 		r = C.cndevGetMLULinkRemoteInfo(&remoteinfo, cndevHandleMap[idx], C.int(i))
 		err = errorString(r)
 		if err != nil {
@@ -477,19 +556,23 @@ func getDeviceMLULinkDevs(idx uint) (map[string]int, error) {
 }
 
 func getDeviceNUMA(idx uint) (int, error) {
+	if ret := dl.checkExist("cndevGetNUMANodeIdByDevId"); ret != C.CNDEV_SUCCESS {
+		return 0, errorString(ret)
+	}
+
 	var numaNode C.cndevNUMANodeId_t
-	numaNode.version = C.CNDEV_VERSION_5
+	numaNode.version = C.CNDEV_VERSION_6
 	r := C.cndevGetNUMANodeIdByDevId(&numaNode, cndevHandleMap[idx])
 	return int(numaNode.nodeId), errorString(r)
 }
 
-func generateDeviceHandleMap() error {
-	num, err := GetDeviceCount()
-	if err != nil {
-		return err
+func generateDeviceHandleMap(count uint) error {
+	if ret := dl.checkExist("cndevGetDeviceHandleByIndex"); ret != C.CNDEV_SUCCESS {
+		return errorString(ret)
 	}
+
 	cndevHandleMap = map[uint]C.cndevDevice_t{}
-	for i := uint(0); i < num; i++ {
+	for i := uint(0); i < count; i++ {
 		var handle C.cndevDevice_t
 		r := C.cndevGetDeviceHandleByIndex(C.int(i), &handle)
 		if errorString(r) != nil {
@@ -498,4 +581,184 @@ func generateDeviceHandleMap() error {
 		cndevHandleMap[i] = handle
 	}
 	return nil
+}
+
+func FetchMLUCounts() (uint, error) {
+	targetVendorID := uint16(0xcabc) // cambricon mlu vendor ID is 0xcabc
+	targetClassBase := uint8(0x12)   // cambricon mlu class code base is 0x12
+	pciDevicesPath := "/sys/bus/pci/devices"
+
+	readHexFile := func(path string) (uint64, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return 0, err
+		}
+		s := strings.TrimSpace(string(data))
+		s = strings.TrimPrefix(s, "0x")
+		val, err := strconv.ParseUint(s, 16, 32)
+		if err != nil {
+			return 0, err
+		}
+		return val, nil
+	}
+
+	entries, err := os.ReadDir(pciDevicesPath)
+	if err != nil {
+		log.Errorf("Can't read pci dir: %v", err)
+		return 0, err
+	}
+
+	var count uint
+	for _, entry := range entries {
+		devicePath := filepath.Join(pciDevicesPath, entry.Name())
+		if _, err := os.Stat(filepath.Join(devicePath, "physfn")); err == nil {
+			log.Debugf("Skip SR-IOV VF device: %s", devicePath)
+			continue
+		}
+		vendorID, err := readHexFile(filepath.Join(devicePath, "vendor"))
+		if err != nil {
+			log.Warnf("Can't read vendor file: %v", err)
+			continue
+		}
+		if uint16(vendorID) != targetVendorID {
+			log.Debugf("VendorID not match 0x%x", vendorID)
+			continue
+		}
+		classCode, err := readHexFile(filepath.Join(devicePath, "class"))
+		if err != nil {
+			log.Warnf("Can't read class file: %v", err)
+			continue
+		}
+		classBase := uint8((classCode >> 16) & 0xFF)
+		if classBase == targetClassBase {
+			log.Debugf("Find mlu device: %s with vendorID 0x%x,classCode: 0x%x, classBase: 0x%x", devicePath, vendorID, classCode, classBase)
+			count++
+		}
+	}
+
+	log.Debugf("Find %d mlu devices", count)
+	return count, nil
+}
+
+func isDriverRunning(counts uint) bool {
+	for i := range counts {
+		_, good, running, err := GetDeviceHealthState(i, 0)
+		if err != nil {
+			log.Warnf("GetDeviceHealth for slot %d with err %v", i, err)
+			return false
+		}
+		if !good {
+			log.Warnf("MLU device %d health maybe in problem, ignoring at init", i)
+		}
+		if !running {
+			log.Warnf("MLU device %d driver is not running", i)
+			return false
+		}
+	}
+	return true
+}
+
+func EnsureMLUAllOk() {
+	log.Infof("Start to ensure mlu driver status is ok")
+	i := 1
+	for {
+		if i < 60000 {
+			i = i << 1
+		}
+		time.Sleep(time.Duration(min(i+100, 60000)) * time.Millisecond)
+
+		if i == 2 {
+			if err := Init(false); err != nil {
+				log.Errorf("Init cndev client failed with err: %v", err)
+				continue
+			}
+		} else {
+			if err := Init(true); err != nil {
+				log.Errorf("Init cndev client failed with err: %v", err)
+				continue
+			}
+		}
+
+		if os.Getenv("INTEGRATION_TEST") == "true" {
+			counts, _ := GetDeviceCount()
+			generateDeviceHandleMap(counts)
+			log.Info("Skip ensuring mlu driver status is ok for integration test")
+			return
+		}
+
+		log.Debug("Start GetDeviceCount")
+		counts, err := GetDeviceCount()
+		if err != nil {
+			log.Errorf("GetDeviceCount failed %v", err)
+			continue
+		}
+		if counts == 0 {
+			log.Warn("No MLU device found with GetDeviceCount")
+			continue
+		}
+		log.Debugf("Device counts: %d", counts)
+
+		realCounts, err := FetchMLUCounts()
+		if err != nil {
+			log.Errorf("FetchMLUCounts failed %v", err)
+			continue
+		}
+		log.Debugf("RealCounts is :%d ", realCounts)
+
+		if counts != realCounts {
+			log.Warnf("MLU device count not match, counts: %d, realCounts: %d", counts, realCounts)
+			continue
+		}
+		log.Infof("MLU device count match, count is %d", counts)
+
+		if err := generateDeviceHandleMap(counts); err != nil {
+			log.Panicf("Generate Device Handle Map failed, this should never happen, counts: %d, err: %v", counts, err)
+		}
+
+		if !isDriverRunning(counts) {
+			continue
+		}
+
+		log.Info("Driver of MLU devices are all running")
+		return
+	}
+}
+
+func EnsureCndevLib() error {
+	var src string
+	x86Src := "/host/usr/lib/x86_64-linux-gnu/libcndev.so"
+	armSrc := "/host/usr/lib/aarch64-linux-gnu/libcndev.so"
+	lib64Src := "/host/usr/lib64/libcndev.so"
+	if _, err := os.Stat(x86Src); err == nil {
+		src = x86Src
+		log.Infof("Found libcndev.so on host: %s", x86Src)
+	} else if _, err := os.Stat(armSrc); err == nil {
+		src = armSrc
+		log.Infof("Found libcndev.so on host: %s", armSrc)
+	} else if _, err := os.Stat(lib64Src); err == nil {
+		src = lib64Src
+		log.Infof("Found libcndev.so on host: %s", lib64Src)
+	} else {
+		log.Info("Found no libcndev.so on host, use default")
+		return nil
+	}
+
+	dst := "/usr/lib/libcndev.so"
+	log.Info("Found libcndev.so in host, try to copy to /usr/lib")
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		log.Errorf("Can't open %s", src)
+		return err
+	}
+	defer sourceFile.Close()
+
+	destinationFile, err := os.Create(dst)
+	if err != nil {
+		log.Errorf("Can't create %s", dst)
+		return err
+	}
+	defer destinationFile.Close()
+
+	_, err = io.Copy(destinationFile, sourceFile)
+	return err
 }

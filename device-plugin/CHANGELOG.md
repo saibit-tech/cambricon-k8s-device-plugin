@@ -1,5 +1,46 @@
 # Changelog
 
+## v2.0.24
+
+- Replace cndevGetCardName with cndevGetCardNameStringByDevId
+
+## v2.0.23
+
+- Add resource limits and requests
+
+## v2.0.22
+
+- Clean deprecated code about mlulink unsatisfy
+
+## v2.0.21
+
+- Simplify cndev detection by directly checking common paths
+- Bump cndev to 6.5.24
+
+## v2.0.20
+
+- Support to auto set mlu related labels for node
+- Update uuid for mim mode and health check
+
+## v2.0.19
+
+- Support to mount cndev dynamically
+- Support to interact with cambricon container runtime
+
+## v2.0.18
+
+- Bump `cndev` to version 6.5.14
+- Optimize the MLU driver startup check logic
+
+## v2.0.17
+
+- Bump golang version to 1.23
+
+## v2.0.16
+
+- Bump `cndev` to version 3.14.2
+- Bump `cntopo` to 1.7.2
+
 ## v2.0.15
 
 - Support to deploy with helm

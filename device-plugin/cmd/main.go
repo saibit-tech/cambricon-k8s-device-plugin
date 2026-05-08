@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
@@ -27,6 +28,7 @@ import (
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/cntopo"
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/dsmlu"
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/mlu"
+	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/nodeLabel"
 	topo "github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/topology"
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
@@ -66,21 +68,16 @@ func main() {
 		log.SetLevel(log.PanicLevel)
 	}
 
-	log.Println("Loading CNDEV")
-	if err := cndev.Init(false); err != nil {
-		log.Errorf("Failed to initialize CNDEV, err: %v", err)
-		select {}
+	if err := cndev.EnsureCndevLib(); err != nil {
+		log.Panicf("Failed to ensure CNDEV lib %v", err)
 	}
+	cndev.EnsureMLUAllOk()
 	defer func() { log.Println("Shutdown of CNDEV returned:", cndev.Release()) }()
 
 	log.Println("Fetching devices.")
 	n, err := cndev.GetDeviceCount()
-	if err != nil {
-		log.Printf("Failed to get device count. err: %v", err)
-	}
-	if n == 0 {
-		log.Println("No devices found. Waiting indefinitely.")
-		select {}
+	if err != nil || n == 0 {
+		log.Panicf("Failed to get device count with err: %v, or count is 0", err)
 	}
 
 	if options.Mode == mlu.TopologyAware {
@@ -99,6 +96,14 @@ func main() {
 		go dsmlu.SyncDsmlu()
 	}
 
+	if options.NodeLabel {
+		log.Println("Starting NodeLabel")
+		nl := nodeLabel.NewNodeLabel(options)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go nl.Run(ctx)
+	}
+
 	log.Println("Starting FS watcher.")
 	watcher, err := startFSWatcher(pluginapi.DevicePluginPath)
 	if err != nil {
@@ -110,7 +115,7 @@ func main() {
 	sigs := startOSWatcher(syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	go func() {
-		http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 			if err := cndev.Init(true); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {

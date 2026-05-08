@@ -104,7 +104,7 @@ func scanMimDevs(origin *cndev.Device, idx uint) ([]*pluginapi.Device, map[strin
 		uid := origin.UUID + "-mim-" + info.UUID
 		devsInfo[uid] = &cndev.Device{
 			Slot:    origin.Slot,
-			UUID:    info.UUID,
+			UUID:    uid,
 			Path:    fmt.Sprintf("%s%d", mluDeviceName, origin.Slot) + "," + info.IpcmDevNodeName + "," + info.DevNodeName, // device name should never contain ","
 			Profile: strings.ReplaceAll(info.Name, "+", "-"),
 		}
@@ -210,7 +210,7 @@ func deviceExists(devs []*pluginapi.Device, id string) bool {
 
 func watchUnhealthy(ctx context.Context, devsInfo map[string]*cndev.Device, health chan<- *pluginapi.Device) {
 	unhealthy := make(map[string]bool)
-
+	var getDeviceComputeModeDisabled bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -218,13 +218,28 @@ func watchUnhealthy(ctx context.Context, devsInfo map[string]*cndev.Device, heal
 		default:
 		}
 
+		omitDupCall := map[uint]int{}
 		for _, dm := range devsInfo {
-			ret, err := cndev.GetDeviceHealthState(dm, 1)
-			if err != nil {
-				log.Warnf("Failed to get Device %s healthy status with err %v, set it as unhealthy", dm.UUID, err)
-				ret = 0
+			if _, ok := omitDupCall[dm.Slot]; !ok {
+				ret, _, _, err := cndev.GetDeviceHealthState(dm.Slot, 1)
+				if err != nil {
+					log.Warnf("Failed to get Device %s healthy status with err %v, set it as unhealthy", dm.UUID, err)
+					ret = 0
+				}
+				if ret == 1 && !getDeviceComputeModeDisabled {
+					computeMode, err := cndev.GetDeviceComputeMode(dm.Slot, 1)
+					if err != nil {
+						getDeviceComputeModeDisabled = true
+						log.Warnf("Failed to get Device %s compute mode with err %v, ignore compute mode", dm.UUID, err)
+					} else if computeMode {
+						ret = 0
+						log.Debugf("Device %s is in compute mode, set it as unhealthy", dm.UUID)
+					}
+				}
+				omitDupCall[dm.Slot] = ret
 			}
-			if ret == 0 {
+
+			if omitDupCall[dm.Slot] == 0 {
 				if unhealthy[dm.UUID] {
 					continue
 				}
@@ -233,8 +248,7 @@ func watchUnhealthy(ctx context.Context, devsInfo map[string]*cndev.Device, heal
 					ID:     dm.UUID,
 					Health: pluginapi.Unhealthy,
 				}
-				t := time.Now()
-				log.Debugf("health state changes from health to unhealth in time %s", t)
+				log.Debugf("Device %s health state changes from health to unhealth in time %s", dm.UUID, time.Now())
 				health <- &dev
 			} else if unhealthy[dm.UUID] {
 				delete(unhealthy, dm.UUID)
@@ -242,8 +256,7 @@ func watchUnhealthy(ctx context.Context, devsInfo map[string]*cndev.Device, heal
 					ID:     dm.UUID,
 					Health: pluginapi.Healthy,
 				}
-				t := time.Now()
-				log.Debugf("health state changes from unhealth to health in time %s", t)
+				log.Debugf("Device %s health state changes from unhealth to health in time %s", dm.UUID, time.Now())
 				health <- &dev
 			}
 		}

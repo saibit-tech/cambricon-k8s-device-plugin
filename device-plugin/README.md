@@ -14,12 +14,13 @@ This repository contains Cambricon's official implementation of the Kubernetes d
 
 The prerequisites for running the Cambricon Device Plugin:
 
-- Support MLU3xx devices
-- For MLU 3xx needs driver >= 4.20.9
-- For MLU 3xx needs cntoolkit >= 2.8.2 on your building machine
-- For SMLU needs driver >= 5.10.27 and cntoolkit >= 3.9.0
+- For mtp_372 needs driver >= 4.20.9
+- For mtp_592 needs driver >= 5.0.0
+- For mtp_372 needs cndev >= 2.8.2 on your building machine
+- For mtp_592 needs cndev >= 3.0.1 on your building machine
+- For SMLU needs driver >= 5.10.27 and cndev >= 3.9.0
 
-For MLU driver version before 4.9.13, and need to support MLU2xx please use [release v1.1.3].
+For MLU driver version before 4.9.13, and need to support mtp_270/mtp_290 please use [release v1.1.3].
 
 For Kubernetes version < 1.19.0, mlulink topology-aware mode can not be used. If you want to use this feature, make sure your Kubernetes version >= 1.19.0.
 
@@ -35,6 +36,8 @@ It is assumed that Cambricon MLU driver and neuware are installed on your MLU No
 git clone https://github.com/Cambricon/cambricon-k8s-device-plugin.git
 cd cambricon-k8s-device-plugin/device-plugin
 ```
+
+Note: when building the device plugin you must obtain the cndev.h header file (version 6.5.24) and place it into the repository at pkg/cndev/include/. This file is provided with Cambricon driver packages.
 
 Set the following environment variables if you need.
 
@@ -81,11 +84,14 @@ It uses **libcndev.so** and **cntopo** binary on your compiling machine and gene
      - --mode=default #device plugin mode: default, env-share, mim and topology-aware
      - --virtualization-num=1 #  virtualization number for each MLU, used only in env-share mode, set to 110 to support multi cards per container in env-share mode
      - --mlulink-policy=best-effort # MLULink topology policy: best-effort, guaranteed or restricted, used only in topology-aware mode
-     - --cnmon-path=/usr/bin/cnmon # host machine cnmon path, must be absolute path. comment out this line to avoid mounting cnmon.
-     - --enable-device-type #comment to enable device registration with type info
-     #- --enable-console #uncomment to enable UART console device(/dev/ttyMS) in container
-     #- --disable-health-check #uncomment to disable health check
-     #- --mount-rpmsg #uncomment to mount RPMsg directory, will be deprecated in the near future
+     - --cnmon-path=/usr/bin/cnmon # host machine cnmon path, must be absolute path. comment out this line if use-runtime is enabled
+     - --enable-device-type # uncomment to enable device registration with type info
+     # - --node-label # uncomment to enable periodic checking and updating of node labels for MLU Devices, such as driver, mcu, model and cpu type
+     # - --one-shot-for-node-label # uncomment to control node label only run once not periodically, only works when node label is enable
+     # - --use-runtime # uncomment to enable interaction with cambricon container runtime to complete device mounting
+     # - --enable-console # uncomment to enable UART console device(/dev/ttyMS) in container
+     # - --disable-health-check # uncomment to disable health check
+     # - --mount-rpmsg # uncomment to mount RPMsg directory, will be deprecated in the near future
    ```
 
    supported features:
@@ -105,8 +111,7 @@ It uses **libcndev.so** and **cntopo** binary on your compiling machine and gene
    kubectl create -f examples/cambricon-device-plugin-daemonset.yaml
    ```
 
-   (Optional) If you do not want the daemonset way of deployment, edit the static pod template in examples folder and
-   put the file into your configured static pod folder (`/etc/kubernetes/manifests` by default).
+   (Optional) If you do not want the daemonset way of deployment, edit the static pod template in examples folder and put the file into your configured static pod folder (`/etc/kubernetes/manifests` by default).
 
 3. Create rbac role and config.
 
@@ -160,6 +165,15 @@ change to info
 
 ```shell
 curl -i http://{{device-plugin-pod-ip}}:30107/logLevel?level=info
+```
+
+### MLU Device Label Management
+
+Enable plugin **periodically checks and updates** Kubernetes node labels to reflect MLU Device attributes, including: "DriverVersion", "MCUVersion", "Model", "CPUType"
+
+```yaml
+- --node-label # enable periodic checking and updating of node labels for MLU Devices, such as driver, mcu, model and cpu type
+- --one-shot-for-node-label # control node label only run once not periodically, only works when node label is enable
 ```
 
 ## Upgrade Notice

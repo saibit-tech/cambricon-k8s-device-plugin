@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/allocator"
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/cndev"
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/cntopo"
 	"github.com/Cambricon/cambricon-k8s-device-plugin/device-plugin/pkg/mlu"
@@ -35,7 +36,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 )
@@ -45,9 +45,10 @@ var (
 	socket    = "/var/lib/kubelet/pod-resources/kubelet.sock"
 	timeout   = 10 * time.Second
 	topoRules = map[string]map[int]int{
-		"MLU290": {2: 2, 4: 4}, //key is the number of cards required, value is the best 'NonConflictRingNum' for this card number combination derived from cntopo
-		"MLU370": {2: 2, 4: 2, 8: 4},
-		"MLU590": {2: 2, 4: 6},
+		"092U": {2: 2, 4: 4}, //key is the number of cards required, value is the best 'NonConflictRingNum' for this card number combination derived from cntopo
+		"073U": {2: 2, 4: 2, 8: 4},
+		"085U": {2: 2},
+		"095U": {2: 2, 4: 6},
 	}
 	uuidPrefix = "MLU-"
 )
@@ -60,12 +61,12 @@ type Topology struct {
 	option      mlu.Options
 	topoRule    map[int]int
 
-	k8sClient  *kubernetes.Clientset
+	k8sClient  kubernetes.Interface
 	topoClient cntopo.Cntopo
 }
 
 func NewTopology(o mlu.Options, num uint) *Topology {
-	model := cndev.GetDeviceModel(uint(0))
+	model := allocator.Reverse(cndev.GetDeviceModel(uint(0)))
 	topoRule := make(map[int]int)
 	for k := range topoRules {
 		if strings.Contains(model, k) {
@@ -85,7 +86,7 @@ func NewTopology(o mlu.Options, num uint) *Topology {
 		option:     o,
 		topoRule:   topoRule,
 
-		k8sClient:  initClientSet(),
+		k8sClient:  mlu.InitClientSet(),
 		topoClient: cntopo.New(),
 	}
 }
@@ -208,7 +209,7 @@ func (t *Topology) SetTopology() {
 					t.execute()
 				}
 			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
+			UpdateFunc: func(_, newObj interface{}) {
 				newPod := newObj.(*corev1.Pod)
 				if matchResource(newPod) {
 					log.Debugf("Find pod use mlu %s is being updated", newPod.Name)
@@ -251,24 +252,12 @@ func (t *Topology) execute() {
 	}
 }
 
-func initClientSet() *kubernetes.Clientset {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		log.Errorf("Failed to get in cluser config, err: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Errorf("Failed to init clientset, err: %v", err)
-	}
-	return clientset
-}
-
 func connectToServer(socket string, timeout time.Duration, maxSize int) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
-	dialer := func(ctx context.Context, address string) (net.Conn, error) {
+	dialer := func(_ context.Context, address string) (net.Conn, error) {
 		return net.DialTimeout("unix", address, timeout)
 	}
 	conn, err := grpc.DialContext(ctx, socket,

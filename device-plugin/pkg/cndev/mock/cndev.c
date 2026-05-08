@@ -64,8 +64,26 @@ cndevRet_t cndevGetCardHealthState(cndevCardHealthState_t *cardHealthState,
 	config = readJsonFile();
 
 	cJSON *health_node = cJSON_GetObjectItem(config, "health");
+	cJSON *driver_status = cJSON_GetObjectItem(config, "driver_status");
+
 	cardHealthState->health =
 	    cJSON_GetArrayItem(health_node, device)->valueint;
+	cardHealthState->deviceState =
+	    cJSON_GetArrayItem(health_node, device)->valueint;
+	cardHealthState->driverState =
+	    cJSON_GetArrayItem(driver_status, device)->valueint;
+	cJSON_Delete(config);
+	return CNDEV_SUCCESS;
+}
+
+cndevRet_t cndevGetComputeMode(cndevComputeMode_t *cardComputeMode,
+			       cndevDevice_t device) {
+	cJSON *config;
+	config = readJsonFile();
+
+	cJSON *compute_node = cJSON_GetObjectItem(config, "health");
+	cardComputeMode->mode =
+	    cJSON_GetArrayItem(compute_node, device)->valueint;
 
 	cJSON_Delete(config);
 	return CNDEV_SUCCESS;
@@ -84,37 +102,6 @@ cndevRet_t cndevGetCardSN(cndevCardSN_t *cardSN, cndevDevice_t device) {
 }
 
 cndevRet_t cndevRelease() { return CNDEV_SUCCESS; }
-
-cndevRet_t cndevGetCardName(cndevCardName_t *cardName, cndevDevice_t device) {
-	cJSON *config;
-	config = readJsonFile();
-
-	cJSON *card_type_node = cJSON_GetObjectItem(config, "type");
-	int card_type = cJSON_GetArrayItem(card_type_node, device)->valueint;
-
-	if (card_type == 0) {
-		cardName->id = MLU100;
-	} else if (card_type == 1) {
-		cardName->id = MLU270;
-	} else if (card_type == 16) {
-		cardName->id = MLU220_M2;
-	} else if (card_type == 17) {
-		cardName->id = MLU220_EDGE;
-	} else if (card_type == 18) {
-		cardName->id = MLU220_EVB;
-	} else if (card_type == 19) {
-		cardName->id = MLU220_M2i;
-	} else if (card_type == 20) {
-		cardName->id = MLU290;
-	} else if (card_type == 23) {
-		cardName->id = MLU370;
-	} else if (card_type == 26) {
-		cardName->id = MLU590;
-	}
-
-	cJSON_Delete(config);
-	return CNDEV_SUCCESS;
-}
 
 const char *cndevGetCardNameStringByDevId(cndevDevice_t device) {
 	cJSON *config;
@@ -136,8 +123,6 @@ const char *cndevGetCardNameStringByDevId(cndevDevice_t device) {
 		return "MLU290";
 	} else if (card_type == 23) {
 		return "MLU370";
-	} else if (card_type == 26) {
-		return "MLU590";
 	}
 }
 
@@ -158,7 +143,8 @@ const char *cndevGetErrorString(cndevRet_t errorId) {
 	return "mock return value of cndev get error string";
 }
 
-cndevRet_t cndevGetPCIeInfo(cndevPCIeInfo_t *deviceInfo, cndevDevice_t device) {
+cndevRet_t cndevGetPCIeInfoV2(cndevPCIeInfoV2_t *deviceInfo,
+			      cndevDevice_t device) {
 	cJSON *config;
 	config = readJsonFile();
 
@@ -175,8 +161,8 @@ cndevRet_t cndevGetPCIeInfo(cndevPCIeInfo_t *deviceInfo, cndevDevice_t device) {
 	return CNDEV_SUCCESS;
 }
 
-cndevRet_t cndevGetMemoryUsage(cndevMemoryInfo_t *memInfo,
-			       cndevDevice_t device) {
+cndevRet_t cndevGetMemoryUsageV2(cndevMemoryInfoV2_t *memInfo,
+				 cndevDevice_t device) {
 	cJSON *config;
 	__int64_t memory;
 	config = readJsonFile();
@@ -206,15 +192,15 @@ cndevRet_t cndevGetMLULinkRemoteInfo(cndevMLULinkRemoteInfo_t *remoteinfo,
 	return CNDEV_SUCCESS;
 }
 
-cndevRet_t cndevGetMLULinkStatus(cndevMLULinkStatus_t *status,
-				 cndevDevice_t device, int link) {
+cndevRet_t cndevGetMLULinkStatusV2(cndevMLULinkStatusV2_t *status,
+				   cndevDevice_t device, int link) {
 	cJSON *config;
 	config = readJsonFile();
 
 	cJSON *mlulink_status_array =
 	    cJSON_GetObjectItem(config, "mlulink_status");
 	cJSON *dev_info = cJSON_GetArrayItem(mlulink_status_array, device);
-	status->isActive = cJSON_GetArrayItem(dev_info, link)->valueint;
+	status->macState = cJSON_GetArrayItem(dev_info, link)->valueint;
 	cJSON_Delete(config);
 	return CNDEV_SUCCESS;
 }
@@ -422,23 +408,5 @@ cndevRet_t cndevDestroySMluInstanceByHandle(cndevMluInstance_t miHandle) {
 }
 
 cndevRet_t cndevDestroySMluProfileInfo(int profileId, cndevDevice_t device) {
-	return CNDEV_SUCCESS;
-}
-
-cndevRet_t cndevGetXidErrorV2(cndevXidErrorV2_t *xidErr, cndevDevice_t device) {
-	if (device != 0) {
-		return CNDEV_SUCCESS;
-	}
-
-	cJSON *config;
-	config = readJsonFile();
-
-	cJSON *xidErrors = cJSON_GetObjectItem(config, "xidErrors");
-	int n = cJSON_GetArraySize(xidErrors);
-	for (int i = 0; i < n; i++) {
-		xidErr->xidCount[i] =
-		    cJSON_GetArrayItem(xidErrors, i)->valueint;
-	}
-	cJSON_Delete(config);
 	return CNDEV_SUCCESS;
 }
